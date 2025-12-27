@@ -193,12 +193,6 @@ def add_to_library(token:str  ,data : LibraryCreate,db:Session=Depends(get_db)) 
     
     current_user=get_current_token(token,db)
         
-    # #checking if the user exsist in db
-    # check_user=db.query(User).filter(User.id==user_id).first()
-    # if  not check_user :
-    #     db.close()
-    #     return {"error": "user was not found "}
-    #check if the game_title exsist in db 
     check_game=db.query(GameTable).filter(GameTable.title==data.game_title).first()
     if not check_game :
         db.close()
@@ -218,12 +212,7 @@ def add_to_library(token:str  ,data : LibraryCreate,db:Session=Depends(get_db)) 
 def read_games(token:str,db:Session=Depends(get_db)):
 
     current_token=get_current_token(token,db)
-    # try:
-    #     payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-    #     user_id=payload_token.get("user_id")
-    # except JWTError:
-    #     db.close()
-    #     return {"error":"invalid token "}
+   
     read=db.query(UserLibrery).filter(UserLibrery.user_id==current_token).all()
 
     if not read :
@@ -244,12 +233,7 @@ def read_games(token:str,db:Session=Depends(get_db)):
 def updating_stutas(game_title:str,data:LibraryUpdate,token:str,db:Session=Depends(get_db)):
 
     current_user=get_current_token(token,db)
-    # try:
-    #     payload=jwt.decode(token,secret_key,algorithms=[algo])
-    #     user_id=payload.get("user_id")
-    # except JWTError:
-    #     db.close()
-    #     return {"error":"in token validation"}
+    
     game_entry=db.query(UserLibrery).filter(UserLibrery.user_id==current_user,UserLibrery.game_title==game_title).first()
     if not game_entry:
         db.close()
@@ -269,25 +253,16 @@ def updating_stutas(game_title:str,data:LibraryUpdate,token:str,db:Session=Depen
 @app.delete("/library/{game_title}")
 def removing(game_title:str ,token:str,db:Session=Depends(get_db)):
 
+    current_user=get_current_token(token,db)
     
-    try:
-        payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload_token.get("user_id")
-    except JWTError:
-        db.close()
-        return {"error":"invalid token"}
+    deleting=db.query(UserLibrery).filter(UserLibrery.user_id==current_user,UserLibrery.game_title==game_title).first()
     
-    deleting=db.query(UserLibrery).filter(UserLibrery.user_id==user_id,UserLibrery.game_title==game_title).first()
-    
-
     if not deleting:
         db.close()
         return {"error":"the prosses of deleting failed"}
     
     db.delete(deleting)
     db.commit()
-     
-    db.close()
     return {"delete":"succeded"}
      
 
@@ -295,15 +270,9 @@ def removing(game_title:str ,token:str,db:Session=Depends(get_db)):
 @app.post("/review/")
 def adding_review(data :ReviewCreating,token:str,db:Session=Depends(get_db)):
 
-    
-    try:
-        payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload_token.get("user_id")
-    except JWTError:
-        db.close()
-        return {"error":"token isn't valid  "}
+    current_user=get_current_token(token,db) 
 
-    creating_review=Review(user_id=user_id,game_title=data.game_title,rating=data.rating,Review_text=data.Review_text)
+    creating_review=Review(user_id=current_user,game_title=data.game_title,rating=data.rating,Review_text=data.Review_text)
     checking_game=db.query(GameTable).filter(GameTable.title==creating_review.game_title).first()
     if not checking_game :
         db.close()
@@ -318,8 +287,9 @@ def adding_review(data :ReviewCreating,token:str,db:Session=Depends(get_db)):
 
 # endpoint that reads game revwies and checks if the review exsist 
 @app.get("/reading_rev/{title}")
-def reading_rev(title:str,db:Session=Depends(get_db)):
-    
+def reading_rev(token:str,title:str,db:Session=Depends(get_db)):
+
+    current_user=get_current_token(token,db)
     read=db.query(Review).filter(Review.game_title==title).first()
     if not read :
         return {"game was not reviewed"}
@@ -335,15 +305,9 @@ def reading_rev(title:str,db:Session=Depends(get_db)):
 @app.patch("/review/{game_title}")
 def updating_rev(game_title:str,data:ReviewUpdate,token:str,db:Session=Depends(get_db)):
 
+    current_user=get_current_token(token,db)
     
-    try:
-        payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload_token.get("user_id")
-    except JWTError:
-        db.close()
-        return {"error":"token validation"}
-
-    rev_entry=db.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title)
+    rev_entry=db.query(Review).filter(Review.user_id==current_user,Review.game_title==game_title).first()
     if not rev_entry:
         db.close()
         return {"error":"can't validat"}
@@ -357,17 +321,9 @@ def updating_rev(game_title:str,data:ReviewUpdate,token:str,db:Session=Depends(g
 @app.delete("/review_del/{game_title}")
 def delete_rev(game_title:str,token:str,db:Session=Depends(get_db)):
     
+    current_user=get_current_token(token,db)
      
-    try:
-
-        payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload_token.get("user_id")
-    except JWTError:
-        db.close()
-        return {"error":"token validation"}
-    
-
-    delete=db.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title).first()
+    delete=db.query(Review).filter(Review.user_id==current_user,Review.game_title==game_title).first()
     if not delete:
         db.close()
         return {"error": "game title can not be found"}
