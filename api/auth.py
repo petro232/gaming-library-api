@@ -1,6 +1,8 @@
 import hashlib
 from jose import jwt
 from datetime import datetime , timedelta , timezone
+from fastapi import HTTPException
+from modules import User
 
 
 secret_key="123_secret-token"
@@ -27,6 +29,21 @@ def creat_access_token(user_id: dict):
     to_encode.update({"exp":expire_time})
     encoded_jwt=jwt.encode(to_encode,secret_key,algorithm=algo)
     return encoded_jwt
+
+
+def get_current_token(token:str,db):
+    try:
+        payload=jwt.decode(token,secret_key,algorithms=[algo])
+        user_id=payload.get("user_id")  # this may be an error 
+        user=db.query(User).filter(User.id==user_id).first()
+        if not user :
+            raise HTTPException (status_code=401,detail="user id did not match")
+        return user_id
+        
+    except :
+        raise HTTPException (status_code=401,detail="getting current token did not sucssed")
+
+
 
 
 

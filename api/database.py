@@ -11,5 +11,15 @@ base =declarative_base() # what is this
 
 open_session=sessionmaker(bind=engine) # and what is this 
 
+def get_db():
+
+    db=open_session()
+    try:
+        yield db
+    finally :
+        db.close()
+
+
+
 
  

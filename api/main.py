@@ -1,11 +1,11 @@
-from fastapi import FastAPI , HTTPException , status
-from sqlalchemy.orm import sessionmaker
+from fastapi import FastAPI , HTTPException , status , Depends
+from sqlalchemy.orm import sessionmaker , Session
 from database import open_session
 from modules import GameTable
-from database import engine , base
+from database import engine , base , get_db
 from modules import User , Review , UserLibrery
 from schemas import LibraryCreate , CreatingUser , ReviewCreating , LibraryUpdate   ,ReviewUpdate
-from auth import  hash_password , verfy_password , creat_access_token , secret_key , algo
+from auth import  hash_password , verfy_password , creat_access_token , secret_key , algo , get_current_token
 
 from jose import jwt , JWTError
  
@@ -16,47 +16,47 @@ app=FastAPI()
 
 # endpint that create new user and stores a hashed password instead of plain password ^^
 @app.post("/user/")
-def creating_user(creating:CreatingUser) :
+def creating_user(creating:CreatingUser,db:Session=Depends(get_db)) :
     
-    session=open_session()
+     
     add_user=User(username=creating.username,email=creating.email,password_hash=hash_password(creating.password))
      
-    session.add(add_user)
-    session.commit()
-    session.refresh(add_user)
-    session.close()
+    db.add(add_user)
+    db.commit()
+    db.refresh(add_user)
+    db.close()
     return {"user was created" :f"{add_user.username}",
             "user_id":f"{add_user.id}"}
 
 #endpoint tha creates new user and provides the login token  ^^^
 @app.post("/login/")
-def login(username: str, password:str):
+def login(username: str, password:str,db:Session=Depends(get_db)):
 
-    session=open_session()
-
-    user=session.query(User).filter(User.username==username).first()
+     
+     
+    user=db.query(User).filter(User.username==username).first()
     if  not user :
-        session.close()
+        db.close()
         return {"error" : "invalid username"}
     
     if not verfy_password(password, user.password_hash) :
-        session.close()
+        db.close()
         return {"error": "invalid   password"}
     
     token=creat_access_token({"user_id":user.id})
     
-    session.close()
+    db.close()
     return {"access_token":token}
 
 #endpoint that list 20 games  ^^^^^
 @app.get("/games/")
-def reading_list_games(limit:int=20):
+def reading_list_games(token:str,limit:int=20,db:Session=Depends(get_db)):
     
-    session=open_session()
-
-    reading=session.query(GameTable).limit(limit).all()
+     
+    curent_token=get_current_token(token,db)
+    reading=db.query(GameTable).limit(limit).all()
     if not reading :
-        session.close()
+        db.close()
         return HTTPException (status_code=404,detail="reading failed")
     
     result=[]
@@ -65,18 +65,18 @@ def reading_list_games(limit:int=20):
                        "year":items.year,
                        "genres":items.genres,
                        "rating":items.genres})
-    session.close()   
+    db.close()   
     return result
 
 #getting game full detaill ^^^
-@app.get("/games/single/{title}")
-def read_one_game(title:str):
+@app.get("/games/single/{title}/")
+def read_one_game(token:str,title:str,db:Session=Depends(get_db)):
 
-    session=open_session()
-    reading=session.query(GameTable).filter(GameTable.title==title).first()
+    curent_token=get_current_token(token,db)
+    reading=db.query(GameTable).filter(GameTable.title==title).first()
 
     if not reading :
-        session.close()
+        db.close()
         return HTTPException(status_code=404,detail="error game not found")
     
     return {"title":reading.title,
@@ -94,12 +94,12 @@ def read_one_game(title:str):
 
 #endpoint that search games by title ^^^
 @app.get("/search/{title_name}/")
-def search_title(title_name:str):
+def search_title(token:str,title_name:str,db:Session=Depends(get_db)):
 
-    session=open_session()
-    game_search=session.query(GameTable).filter(GameTable.title.ilike(f"%{title_name}%")).all()
+    current_user=get_current_token(token,db)
+    game_search=db.query(GameTable).filter(GameTable.title.ilike(f"%{title_name}%")).all()
     if not game_search :
-        session.close()
+        db.close()
         return {"game was not found"}
     result=[]
     for game in game_search:
@@ -116,11 +116,11 @@ def search_title(title_name:str):
 #reading top rated games ^^
 @app.get("/games/top_rated/")
 
-def top_rated(limit:int):
+def top_rated(token:str,limit:int,db:Session=Depends(get_db)):
 
-    session=open_session()
-    reading=session.query(GameTable).order_by(GameTable.rating.desc()).limit(limit).all()
-    session.close()
+    current_user=get_current_token(token,db)
+    reading=db.query(GameTable).order_by(GameTable.rating.desc()).limit(limit).all()
+    db.close()
     result=[]
     for x in reading:
         result.append({"title":x.title,
@@ -138,12 +138,12 @@ def top_rated(limit:int):
 
 #endpint that gets most played games
 @app.get("/games/most_played/")
-def reading_most_played(limit:int):
+def reading_most_played(token:str,limit:int,db:Session=Depends(get_db)):
 
-    session=open_session()
-    reading=session.query(GameTable).order_by(GameTable.played.desc()).limit(limit).all()
+    current_user=get_current_token(token,db)
+    reading=db.query(GameTable).order_by(GameTable.played.desc()).limit(limit).all()
     if not reading :
-        session.close()
+        db.close()
         return {"error":"could not access your requist "}
     
     result=[]
@@ -162,12 +162,12 @@ def reading_most_played(limit:int):
 
 #enpoint that reads based on genres 
 @app.get("/games/genres/")
-def reading_genres(limit=int,genre=str):
+def reading_genres(token:str,limit=int,genre=str,db:Session=Depends(get_db)):
     
-    session=open_session()
-    reading=session.query(GameTable).filter(GameTable.genres.contains(genre)).limit(limit).all()
+    current_user=get_current_token(token,db)
+    reading=db.query(GameTable).filter(GameTable.genres.contains(genre)).limit(limit).all()
     if not reading:
-        session.close()
+        db.close()
         return {"error": "could not access your requist"}
     
     result=[]
@@ -184,53 +184,50 @@ def reading_genres(limit=int,genre=str):
                    "story":x.story,
                    "genre":x.genres})
     return result
+
+
 # endpint that adds games to users librery  ^^^
 @app.post("/library/")
-def add_to_library(token:str  ,data : LibraryCreate) :
+def add_to_library(token:str  ,data : LibraryCreate,db:Session=Depends(get_db)) :
 
-    session=open_session()
-    try:
-        playload=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=playload.get("user_id")
-    except JWTError:
-        session.close()
-        return {"error":"invalid token"}
+    
+    current_user=get_current_token(token,db)
         
-    #checking if the user exsist in db
-    check_user=session.query(User).filter(User.id==user_id).first()
-    if  not check_user :
-        session.close()
-        return {"error": "user was not found "}
+    # #checking if the user exsist in db
+    # check_user=db.query(User).filter(User.id==user_id).first()
+    # if  not check_user :
+    #     db.close()
+    #     return {"error": "user was not found "}
     #check if the game_title exsist in db 
-    check_game=session.query(GameTable).filter(GameTable.title==data.game_title).first()
+    check_game=db.query(GameTable).filter(GameTable.title==data.game_title).first()
     if not check_game :
-        session.close()
+        db.close()
         return {"error":"game was not found"}
 
-    creating=UserLibrery(user_id=user_id,game_title=data.game_title,status=data.status,hours_played=data.hours_played)
-    session.add(creating)
-    session.commit()
-    session.refresh(creating)
-    session.close()
+    creating=UserLibrery(user_id=current_user,game_title=data.game_title,status=data.status,hours_played=data.hours_played)
+    db.add(creating)
+    db.commit()
+    db.refresh(creating)
+    db.close()
 
-    return {"Library was created" : f"user id : {user_id} || game :{data.game_title} || status {data.status} || played for {data.hours_played}"}
+    return {"Library was created" : f"user id : {current_user} || game :{data.game_title} || status {data.status} || played for {data.hours_played}"}
 
 
 #enpoint to get all games in logged in librery  ^^^
 @app.get("/library/")
-def read_games(token:str):
+def read_games(token:str,db:Session=Depends(get_db)):
 
-    sesssion=open_session()
-    try:
-        payload_token=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload_token.get("user_id")
-    except JWTError:
-        sesssion.close()
-        return {"error":"invalid token "}
-    read=sesssion.query(UserLibrery).filter(UserLibrery.user_id==user_id).all()
+    current_token=get_current_token(token,db)
+    # try:
+    #     payload_token=jwt.decode(token,secret_key,algorithms=[algo])
+    #     user_id=payload_token.get("user_id")
+    # except JWTError:
+    #     db.close()
+    #     return {"error":"invalid token "}
+    read=db.query(UserLibrery).filter(UserLibrery.user_id==current_token).all()
 
     if not read :
-        sesssion.close()
+        db.close()
         return {"error":"we could not return your query"}
     result=[]
     for x in read:
@@ -244,22 +241,22 @@ def read_games(token:str):
 
 # updating game status 
 @app.patch("/library/{game_title}")
-def updating_stutas(game_title:str,data:LibraryUpdate,token:str):
+def updating_stutas(game_title:str,data:LibraryUpdate,token:str,db:Session=Depends(get_db)):
 
-    session=open_session()
-    try:
-        payload=jwt.decode(token,secret_key,algorithms=[algo])
-        user_id=payload.get("user_id")
-    except JWTError:
-        session.close()
-        return {"error":"in token validation"}
-    game_entry=session.query(UserLibrery).filter(UserLibrery.user_id==user_id,UserLibrery.game_title==game_title).first()
+    current_user=get_current_token(token,db)
+    # try:
+    #     payload=jwt.decode(token,secret_key,algorithms=[algo])
+    #     user_id=payload.get("user_id")
+    # except JWTError:
+    #     db.close()
+    #     return {"error":"in token validation"}
+    game_entry=db.query(UserLibrery).filter(UserLibrery.user_id==current_user,UserLibrery.game_title==game_title).first()
     if not game_entry:
-        session.close()
+        db.close()
         return {"error":"method not allowed"}
     
     game_entry.status= data.status
-    session.commit()
+    db.commit()
     return {"status":f"was updated to {game_entry.status}"}
     
      
@@ -270,60 +267,60 @@ def updating_stutas(game_title:str,data:LibraryUpdate,token:str):
 
 #this endpoint deletes librery row by its game tile   
 @app.delete("/library/{game_title}")
-def removing(game_title:str ,token:str):
+def removing(game_title:str ,token:str,db:Session=Depends(get_db)):
 
-    session=open_session()
+    
     try:
         payload_token=jwt.decode(token,secret_key,algorithms=[algo])
         user_id=payload_token.get("user_id")
     except JWTError:
-        session.close()
+        db.close()
         return {"error":"invalid token"}
     
-    deleting=session.query(UserLibrery).filter(UserLibrery.user_id==user_id,UserLibrery.game_title==game_title).first()
+    deleting=db.query(UserLibrery).filter(UserLibrery.user_id==user_id,UserLibrery.game_title==game_title).first()
     
 
     if not deleting:
-        session.close()
+        db.close()
         return {"error":"the prosses of deleting failed"}
     
-    session.delete(deleting)
-    session.commit()
+    db.delete(deleting)
+    db.commit()
      
-    session.close()
+    db.close()
     return {"delete":"succeded"}
      
 
 # endpoint that allows users to create reviews  ^^^^
 @app.post("/review/")
-def adding_review(data :ReviewCreating,token:str):
+def adding_review(data :ReviewCreating,token:str,db:Session=Depends(get_db)):
 
-    session=open_session()
+    
     try:
         payload_token=jwt.decode(token,secret_key,algorithms=[algo])
         user_id=payload_token.get("user_id")
     except JWTError:
-        session.close()
+        db.close()
         return {"error":"token isn't valid  "}
 
     creating_review=Review(user_id=user_id,game_title=data.game_title,rating=data.rating,Review_text=data.Review_text)
-    checking_game=session.query(GameTable).filter(GameTable.title==creating_review.game_title).first()
+    checking_game=db.query(GameTable).filter(GameTable.title==creating_review.game_title).first()
     if not checking_game :
-        session.close()
+        db.close()
         return {"error":"game dose not exsist "}
     
-    session.add(creating_review)
-    session.commit()
-    session.refresh(creating_review)
-    session.close()
+    db.add(creating_review)
+    db.commit()
+    db.refresh(creating_review)
+    db.close()
     return {"review was created by:":f"user_id:{creating_review.user_id} text:{creating_review.Review_text}"}
 
 
 # endpoint that reads game revwies and checks if the review exsist 
 @app.get("/reading_rev/{title}")
-def reading_rev(title:str):
-    session=open_session()
-    read=session.query(Review).filter(Review.game_title==title).first()
+def reading_rev(title:str,db:Session=Depends(get_db)):
+    
+    read=db.query(Review).filter(Review.game_title==title).first()
     if not read :
         return {"game was not reviewed"}
 
@@ -332,52 +329,52 @@ def reading_rev(title:str):
             "Review_text":read.Review_text,
             "created_at":read.created_at}
     
-    session.close() 
+    db.close() 
     return result
 
 @app.patch("/review/{game_title}")
-def updating_rev(game_title:str,data:ReviewUpdate,token:str):
+def updating_rev(game_title:str,data:ReviewUpdate,token:str,db:Session=Depends(get_db)):
 
-    session=open_session()
+    
     try:
         payload_token=jwt.decode(token,secret_key,algorithms=[algo])
         user_id=payload_token.get("user_id")
     except JWTError:
-        session.close()
+        db.close()
         return {"error":"token validation"}
 
-    rev_entry=session.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title)
+    rev_entry=db.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title)
     if not rev_entry:
-        session.close()
+        db.close()
         return {"error":"can't validat"}
     rev_entry.Review_text=data.Review_text
-    session.commit()
+    db.commit()
 
     return {"review":f"updated to : {rev_entry.Review_text}"}
 
 
 
 @app.delete("/review_del/{game_title}")
-def delete_rev(game_title:str,token:str):
+def delete_rev(game_title:str,token:str,db:Session=Depends(get_db)):
     
-    session=open_session()
+     
     try:
 
         payload_token=jwt.decode(token,secret_key,algorithms=[algo])
         user_id=payload_token.get("user_id")
     except JWTError:
-        session.close()
+        db.close()
         return {"error":"token validation"}
     
 
-    delete=session.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title).first()
+    delete=db.query(Review).filter(Review.user_id==user_id,Review.game_title==game_title).first()
     if not delete:
-        session.close()
+        db.close()
         return {"error": "game title can not be found"}
      
     
-    session.delete(delete)
-    session.commit()
+    db.delete(delete)
+    db.commit()
 
     return{"the game" : " review was deleted "}
     
